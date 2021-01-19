@@ -14,7 +14,7 @@
 //==============================================================================
 /**
 */
-class PhaseEQAudioProcessorEditor  : public juce::AudioProcessorEditor
+class PhaseEQAudioProcessorEditor  : public juce::AudioProcessorEditor, juce::Timer
 {
 public:
     PhaseEQAudioProcessorEditor (PhaseEQAudioProcessor&);
@@ -28,14 +28,17 @@ public:
 
 
 private:
-    // This reference is provided as a quick way for your editor to
-    // access the processor object that created it.
+    void timerCallback() override;
     PhaseEQAudioProcessor& audioProcessor;
     juce::Rectangle<int> window;
     juce::Array<double> freqs;
     juce::Array<double> mags;
     juce::Array<double> phases;
-
+    juce::Slider freqKnob, gainKnob, qKnob;
+    juce::ComboBox filtersList;
+    juce::Label freqLabel, gainLabel, qLabel, filtersLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> freqAttachment, gainAttachment, qAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> filtersAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PhaseEQAudioProcessorEditor)
 };

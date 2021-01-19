@@ -14,6 +14,7 @@ PhaseEQAudioProcessorEditor::PhaseEQAudioProcessorEditor (PhaseEQAudioProcessor&
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
     setSize (1000, 800);
+    startTimerHz(60);
 
     int padding = 50;
     window.setSize(getWidth()-padding, getHeight()*1/2);
@@ -29,6 +30,62 @@ PhaseEQAudioProcessorEditor::PhaseEQAudioProcessorEditor (PhaseEQAudioProcessor&
     mags.fill(0);
     phases.resize(window.getWidth());
     phases.fill(0);
+
+    /* initialize parameters */
+
+    freqKnob.setColour(juce::Slider::ColourIds::thumbColourId, juce::Colours::lightgrey);
+    freqKnob.setSliderStyle(juce::Slider::SliderStyle::LinearHorizontal);
+    freqKnob.setTextBoxStyle(juce::Slider::TextEntryBoxPosition::TextBoxBelow, false, 100, 20);
+    freqKnob.setTextValueSuffix(" Hz");
+    freqKnob.onValueChange = [this] {audioProcessor.setUpdate(true);};
+    freqAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.getParameters(),"FREQ",freqKnob);
+    freqLabel.setText("Frequency", juce::dontSendNotification);
+    freqLabel.setJustificationType(juce::Justification::horizontallyCentred);
+    freqLabel.attachToComponent(&freqKnob, true);
+    addAndMakeVisible(freqKnob);
+
+    gainKnob.setColour(juce::Slider::ColourIds::thumbColourId, juce::Colours::lightgrey);
+    gainKnob.setSliderStyle(juce::Slider::SliderStyle::LinearHorizontal);
+    gainKnob.setTextBoxStyle(juce::Slider::TextEntryBoxPosition::TextBoxBelow, false, 100, 20);
+    gainKnob.setTextValueSuffix(" dB");
+    gainKnob.onValueChange = [this] {audioProcessor.setUpdate(true);};
+    gainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.getParameters(),"GAIN",gainKnob);
+    gainLabel.setText("Gain", juce::dontSendNotification);
+    gainLabel.setJustificationType(juce::Justification::horizontallyCentred);
+    gainLabel.attachToComponent(&gainKnob, true);
+    addAndMakeVisible(gainKnob);
+
+    qKnob.setColour(juce::Slider::ColourIds::thumbColourId, juce::Colours::lightgrey);
+    qKnob.setSliderStyle(juce::Slider::SliderStyle::LinearHorizontal);
+    qKnob.setTextBoxStyle(juce::Slider::TextEntryBoxPosition::TextBoxBelow, false, 100, 20);
+    qKnob.onValueChange = [this] {audioProcessor.setUpdate(true);};
+    qAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.getParameters(),"Q",qKnob);
+    qLabel.setText("Q", juce::dontSendNotification);
+    qLabel.setJustificationType(juce::Justification::horizontallyCentred);
+    qLabel.attachToComponent(&qKnob, true);
+    addAndMakeVisible(qKnob);
+
+    filtersList.setColour(juce::Slider::ColourIds::thumbColourId, juce::Colours::lightgrey);
+    filtersList.onChange = [this] {audioProcessor.setUpdate(true);};
+    auto items = audioProcessor.getFiltersList();
+    for(int i = 0; i < items.size(); i++)
+        filtersList.addItem(items[i], i+1);
+    filtersAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.getParameters(),"FILTERS",filtersList);
+    filtersLabel.setText("Filters", juce::dontSendNotification);
+    filtersLabel.setJustificationType(juce::Justification::horizontallyCentred);
+    filtersLabel.attachToComponent(&filtersList, true);
+    addAndMakeVisible(filtersList);
+
+
+    /* set positions */
+    int spacing = 60;
+    int gap = spacing*3/4;
+
+//    freqKnob.setBounds(window);
+    freqKnob.setBounds(getWidth()/3, getHeight()-spacing*4-gap, 400, 50);
+    gainKnob.setBounds(getWidth()/3, getHeight()-spacing*3-gap, 400, 50);
+    qKnob.setBounds(getWidth()/3, getHeight()-spacing*2-gap, 400, 50);
+    filtersList.setBounds(100, getHeight()-spacing*4-gap, 100, 25);
 }
 
 PhaseEQAudioProcessorEditor::~PhaseEQAudioProcessorEditor()
@@ -46,7 +103,6 @@ void PhaseEQAudioProcessorEditor::paint (juce::Graphics& g)
 
 void PhaseEQAudioProcessorEditor::plot(juce::Graphics& g)
 {
-    g.drawRect(window);
     audioProcessor.getFreqResponse(freqs.getRawDataPointer(), mags.getRawDataPointer(), freqs.size());
     audioProcessor.getPhaseResponse(freqs.getRawDataPointer(), phases.getRawDataPointer(), freqs.size());
 
@@ -99,10 +155,19 @@ void PhaseEQAudioProcessorEditor::plot(juce::Graphics& g)
             g.fillRect(x1, y2, 1, 1 + (y1 - y2));
         }
     }
-
-
+    g.setColour(juce::Colours::lightgrey);
+    g.drawRect(window);
 }
 
 void PhaseEQAudioProcessorEditor::resized()
 {
+}
+
+void PhaseEQAudioProcessorEditor::timerCallback()
+{
+    if(audioProcessor.checkForUpdates())
+    {
+        repaint();
+        audioProcessor.setUpdateGUI(false);
+    }
 }

@@ -19,7 +19,8 @@ PhaseEQAudioProcessor::PhaseEQAudioProcessor()
                       #endif
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
-                       )
+                       ),
+                    parameters(*this, nullptr, "Parameters", createParameters())
 #endif
 {
 }
@@ -98,13 +99,9 @@ void PhaseEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     spec.sampleRate = sampleRate;
     spec.numChannels = getTotalNumInputChannels();
 
-
-    *filter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 1000, .707);
-//    *filter.state = *juce::dsp::IIR::Coefficients<float>::makeFirstOrderLowPass(sampleRate, 1000);
-//    *filter.state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate, 1000, 100, 5);
-
     filter.prepare(spec);
-    filter.reset();
+
+    setUpdate(true);
 }
 
 void PhaseEQAudioProcessor::releaseResources()
@@ -146,8 +143,65 @@ void PhaseEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
+    if(requiresUpdate)
+    {
+        updateParameters();
+    }
+
     auto block = juce::dsp::AudioBlock<float>(buffer);
     filter.process(juce::dsp::ProcessContextReplacing<float>(block));
+}
+
+void PhaseEQAudioProcessor::updateParameters()
+{
+    setUpdateGUI(false);
+    float freq = *parameters.getRawParameterValue("FREQ");
+    float gain = *parameters.getRawParameterValue("GAIN");
+    float q = *parameters.getRawParameterValue("Q");
+    int filterChoice = *parameters.getRawParameterValue("FILTERS");
+
+    switch(filterChoice)
+    {
+        case 0:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(), freq, q, juce::Decibels::decibelsToGain(gain));
+            break;
+        case 1:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(getSampleRate(), freq, q);
+            break;
+        case 2:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(getSampleRate(), freq, q);
+            break;
+        case 3:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makeBandPass(getSampleRate(), freq, q);
+            break;
+        case 4:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makeNotch(getSampleRate(), freq, q);
+            break;
+        case 5:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makeAllPass(getSampleRate(), freq, q);
+            break;
+        case 6:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makeLowShelf(getSampleRate(), freq, q, juce::Decibels::decibelsToGain(gain));
+            break;
+        case 7:
+            *filter.state = *juce::dsp::IIR::Coefficients<float>::makeHighShelf(getSampleRate(), freq, q, juce::Decibels::decibelsToGain(gain));
+            break;
+        default:
+            jassert(false);
+    }
+
+    setUpdateGUI(true);
+    setUpdate(false);
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout PhaseEQAudioProcessor::createParameters()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("FREQ"   , "Freq"   , juce::NormalisableRange<float>(30.f , 20000.f, 0.001f, 0.2f), 1000.f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("GAIN"   , "Gain"   , juce::NormalisableRange<float>(-10.f, 10.f   , 0.001f      ), 0.f   ));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("Q"      , "Q"      , juce::NormalisableRange<float>(0.1f , 18.f   , 0.001f      ), .707f ));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("FILTERS", "Filters", filtersList, 0));
+    return { params.begin(), params.end() };
 }
 
 //==============================================================================
@@ -164,15 +218,22 @@ juce::AudioProcessorEditor* PhaseEQAudioProcessor::createEditor()
 //==============================================================================
 void PhaseEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    std::unique_ptr<juce::XmlElement> xml(parameters.state.createXml());
+    copyXmlToBinary(*xml, destData);
 }
 
 void PhaseEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+
+    if(xmlState.get() != nullptr)
+    {
+        if(xmlState->hasTagName(parameters.state.getType()))
+        {
+            parameters.state = juce::ValueTree::fromXml(*xmlState);
+        }
+    }
+    setUpdate(true);
 }
 
 //==============================================================================
